@@ -158,6 +158,9 @@ export default function InvoicePage({ mode: propMode }) {
                                     <th className="text-right">Qty</th>
                                     <th className="text-right">Unit Price</th>
                                     <th className="text-right">Extended</th>
+                                    <th className="text-right">Discount %</th>
+                                    <th className="text-right">Discount Amount</th>
+                                    <th className="text-right">Net Price</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -167,7 +170,10 @@ export default function InvoicePage({ mode: propMode }) {
                                         <td>{li.units_code}</td>
                                         <td className="text-right">{Number(li.quantity || 0).toFixed(2)}</td>
                                         <td className="text-right">{formatBaht(li.unit_price)}</td>
-                                        <td className="text-right font-bold">{formatBaht(li.extended_price)}</td>
+                                        <td className="text-right">{formatBaht(li.line_extended_price ?? li.extended_price)}</td>
+                                        <td className="text-right">{(Number(li.line_discount_percent || 0) * 100).toFixed(0)}%</td>
+                                        <td className="text-right">{formatBaht(li.line_discount_amount || 0)}</td>
+                                        <td className="text-right font-bold">{formatBaht(li.line_net_price ?? li.line_extended_price ?? li.extended_price)}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -190,6 +196,10 @@ export default function InvoicePage({ mode: propMode }) {
                             <div className="flex justify-between mb-2">
                                 <span>Net Price:</span>
                                 <span>{formatBaht(h.net_price ?? h.total_amount)}</span>
+                            </div>
+                            <div className="flex justify-between mb-2">
+                                <span>VAT %:</span>
+                                <span>{(Number(h.vat_percent || 0.07) * 100).toFixed(0)}%</span>
                             </div>
                             <div className="flex justify-between mb-2">
                                 <span>VAT Amount:</span>
