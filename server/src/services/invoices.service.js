@@ -97,6 +97,16 @@ async function resolveInvoiceId(invoice_no) {
   return r.rowCount > 0 ? r.rows[0].id : null;
 }
 
+export async function getInvoiceDefaults() {
+  const client = await pool.connect();
+  try {
+    const vat_rate = await getDefaultVatRate(client);
+    return { vat_rate };
+  } finally {
+    client.release();
+  }
+}
+
 export async function getInvoice(idOrInvoiceNo) {
   // Support both id (number) and invoice_no (string) for backward compatibility during migration
   let id = idOrInvoiceNo;

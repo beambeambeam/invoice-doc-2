@@ -26,6 +26,16 @@ export async function getInvoice(req, res) {
   }
 }
 
+export async function getInvoiceDefaults(req, res) {
+  try {
+    const result = await invoicesService.getInvoiceDefaults();
+    sendOne(res, result);
+  } catch (err) {
+    logger.error("getInvoiceDefaults failed", { error: err?.message ?? String(err) });
+    sendError(res, err?.message ?? String(err), 500);
+  }
+}
+
 export async function createInvoice(req, res) {
   // const parsed = CreateInvoiceSchema.safeParse(req.body);
   // if (!parsed.success) return sendError(res, "Validation failed", 400, "VALIDATION_ERROR", parsed.error.flatten());

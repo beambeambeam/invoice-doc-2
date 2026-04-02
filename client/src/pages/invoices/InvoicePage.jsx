@@ -4,7 +4,7 @@
 // - /invoices/:id/edit → mode="edit"
 import React from "react";
 import { useNavigate, Link, useParams } from "react-router-dom";
-import { getInvoice, createInvoice, updateInvoice } from "../../api/invoices.api.js";
+import { getInvoice, getInvoiceDefaults, createInvoice, updateInvoice } from "../../api/invoices.api.js";
 import { toast } from "react-toastify";
 import { formatBaht, formatDate } from "../../utils.js";
 import InvoiceForm from "../../components/InvoiceForm.jsx";
@@ -23,8 +23,18 @@ export default function InvoicePage({ mode: propMode }) {
 
     React.useEffect(() => {
         if (mode === "create") {
-            // No need to preload data - search will fetch on demand
-            setLoading(false);
+            getInvoiceDefaults()
+                .then((defaults) => {
+                    setInitialData({
+                        vat_rate: Number(defaults?.vat_rate ?? 0.07),
+                        line_items: [],
+                    });
+                    setLoading(false);
+                })
+                .catch((e) => {
+                    setErr(String(e.message || e));
+                    setLoading(false);
+                });
         } else if (mode === "view") {
             getInvoice(id)
                 .then((data) => {
@@ -42,9 +52,6 @@ export default function InvoicePage({ mode: propMode }) {
                     setInvoiceData(inv);
                     
                     const h = inv.header;
-                    const total = Number(h.total_amount);
-                    const vat = Math.round(Number(h.vat) * 100) / 100;
-                    const rate = total > 0 ? (vat / total) : 0.07;
 
                     setInitialData({
                         invoice_no: h.invoice_no,
@@ -53,7 +60,7 @@ export default function InvoicePage({ mode: propMode }) {
                         sales_person_code: h.sales_person_code || "",
                         sales_person_name: h.sales_person_name || "",
                         invoice_date: h.invoice_date,
-                        vat_rate: rate,
+                        vat_rate: Number(h.vat_percent || 0.07),
                         line_items: inv.line_items.map(li => ({
                             line_item_id: li.id,
                             product_code: li.product_code,
@@ -104,7 +111,7 @@ export default function InvoicePage({ mode: propMode }) {
     const isCreate = mode === "create";
 
     // View Mode - Invoice Preview with Print
-    if (isView && invoiceData) {
+        if (isView && invoiceData) {
         const h = invoiceData.header;
         const lines = invoiceData.line_items || [];
 
@@ -171,17 +178,25 @@ export default function InvoicePage({ mode: propMode }) {
                         <div className="no-print text-muted" style={{ maxWidth: 300, fontSize: '0.8rem' }}>
                             Thank you for your business. Please pay within 30 days.
                         </div>
-                        <div style={{ minWidth: 200 }}>
+                            <div style={{ minWidth: 200 }}>
                             <div className="flex justify-between mb-2">
-                                <span>Subtotal:</span>
-                                <span>{formatBaht(h.total_amount)}</span>
+                                <span>Total Price:</span>
+                                <span>{formatBaht(h.total_price ?? h.total_amount)}</span>
                             </div>
                             <div className="flex justify-between mb-2">
-                                <span>VAT:</span>
-                                <span>{formatBaht(h.vat)}</span>
+                                <span>Total Discount:</span>
+                                <span>{formatBaht(h.total_discount ?? 0)}</span>
+                            </div>
+                            <div className="flex justify-between mb-2">
+                                <span>Net Price:</span>
+                                <span>{formatBaht(h.net_price ?? h.total_amount)}</span>
+                            </div>
+                            <div className="flex justify-between mb-2">
+                                <span>VAT Amount:</span>
+                                <span>{formatBaht(h.vat_amount ?? h.vat)}</span>
                             </div>
                             <div className="flex justify-between mt-4 p-2 bg-body font-bold" style={{ fontSize: '1.1rem' }}>
-                                <span>Total Due:</span>
+                                <span>Amount Due:</span>
                                 <span>{formatBaht(h.amount_due)}</span>
                             </div>
                         </div>

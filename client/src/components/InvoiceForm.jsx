@@ -9,6 +9,22 @@ import { getCustomer } from "../api/customers.api.js";
 import { formatBaht } from "../utils.js";
 
 export default function InvoiceForm({ onSubmit, submitting, initialData }) {
+  function round2(value) {
+    return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+  }
+
+  function computeLineExtended(item) {
+    return round2(Number(item.quantity || 0) * Number(item.unit_price || 0));
+  }
+
+  function computeLineDiscount(item) {
+    return round2(Number(item.line_discount_percent || 0) * computeLineExtended(item));
+  }
+
+  function computeLineNet(item) {
+    return round2(computeLineExtended(item) - computeLineDiscount(item));
+  }
+
   // Local state for header fields and line items
   const [invoiceNo, setInvoiceNo] = React.useState("");
   const [customerCode, setCustomerCode] = React.useState("");
@@ -85,9 +101,11 @@ export default function InvoiceForm({ onSubmit, submitting, initialData }) {
     }
   }, [initialData]);
 
-  const subtotal = items.reduce((s, it) => s + Number(it.quantity || 0) * Number(it.unit_price || 0), 0);
-  const vat = subtotal * Number(vatRate || 0);
-  const amountDue = subtotal + vat;
+  const totalPrice = round2(items.reduce((sum, item) => sum + computeLineExtended(item), 0));
+  const totalDiscount = round2(items.reduce((sum, item) => sum + computeLineDiscount(item), 0));
+  const netPrice = round2(totalPrice - totalDiscount);
+  const vat = round2(netPrice * Number(vatRate || 0));
+  const amountDue = round2(netPrice + vat);
 
   const [autoCode, setAutoCode] = React.useState(true);
 
@@ -324,16 +342,24 @@ export default function InvoiceForm({ onSubmit, submitting, initialData }) {
         <div className="card invoice-summary-card" style={{ height: "fit-content" }}>
           <h4>Summary</h4>
           <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--text-muted)" }}>
-              <span>Subtotal</span>
-              <span className="amount">{submitting ? "..." : formatBaht(subtotal)}</span>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--text-muted)" }}>
+              <span>Total Price</span>
+              <span className="amount">{submitting ? "..." : formatBaht(totalPrice)}</span>
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--text-muted)" }}>
-              <span>VAT ({(vatRate * 100).toFixed(0)}%)</span>
+              <span>Total Discount</span>
+              <span className="amount">{submitting ? "..." : formatBaht(totalDiscount)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--text-muted)" }}>
+              <span>Net Price</span>
+              <span className="amount">{submitting ? "..." : formatBaht(netPrice)}</span>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.875rem", color: "var(--text-muted)" }}>
+              <span>VAT Amount ({(vatRate * 100).toFixed(0)}%)</span>
               <span className="amount">{submitting ? "..." : formatBaht(vat)}</span>
             </div>
             <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10, marginTop: 2, display: "flex", justifyContent: "space-between", fontSize: "1.1rem", fontWeight: 700, color: "var(--primary)" }}>
-              <span>Total</span>
+              <span>Amount Due</span>
               <span>{submitting ? "..." : formatBaht(amountDue)}</span>
             </div>
           </div>
