@@ -110,6 +110,7 @@ export async function getInvoice(idOrInvoiceNo) {
   const header = await pool.query(
     `
       select i.invoice_no, i.invoice_date, i.total_amount, i.vat, i.amount_due,
+             i.total_price, i.total_discount, i.net_price, i.vat_percent, i.vat_amount,
              c.code as customer_code, c.name as customer_name,
              c.address_line1, c.address_line2,
              co.name as country_name,
@@ -131,7 +132,10 @@ export async function getInvoice(idOrInvoiceNo) {
       select li.id,
              p.code as product_code, p.name as product_name,
              u.code as units_code,
-             li.quantity, li.unit_price, li.extended_price
+             li.quantity, li.unit_price,
+             li.extended_price,
+             li.extended_price as line_extended_price,
+             li.line_discount_percent, li.line_discount_amount, li.line_net_price
       from invoice_line_item li
       join product p on p.id = li.product_id
       join units u on u.id = p.units_id
