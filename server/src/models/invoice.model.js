@@ -13,8 +13,8 @@ export const CreateInvoiceSchema = z.object({
         product_code: z.string().min(1, "Product code is required"),
         quantity: z.coerce.number().positive(),
         unit_price: z.coerce.number().nonnegative().optional(),
+        line_discount_percent: z.coerce.number().min(0).max(1).default(0),
       }),
     )
     .min(1),
 });
-
