@@ -81,11 +81,13 @@ export default function InvoiceForm({ onSubmit, submitting, initialData }) {
 
   React.useEffect(() => {
     if (initialData) {
-      setInvoiceNo(initialData.invoice_no);
+      setInvoiceNo(initialData.invoice_no || "");
       setCustomerCode(initialData.customer_code || "");
       setSalesPersonCode(initialData.sales_person_code || "");
       setSalesPersonName(initialData.sales_person_name || "");
-      const d = initialData.invoice_date ? new Date(initialData.invoice_date).toISOString().slice(0, 10) : "";
+      const d = initialData.invoice_date
+        ? new Date(initialData.invoice_date).toISOString().slice(0, 10)
+        : new Date().toISOString().slice(0, 10);
       setInvoiceDate(d);
       setVatRate(Number(initialData.vat_rate || 0.07));
       const mappedItems = (initialData.line_items || []).map(li => ({
