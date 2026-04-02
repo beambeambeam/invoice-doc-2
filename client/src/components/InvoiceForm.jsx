@@ -14,7 +14,7 @@ export default function InvoiceForm({ onSubmit, submitting, initialData }) {
   const [customerCode, setCustomerCode] = React.useState("");
   const [invoiceDate, setInvoiceDate] = React.useState(new Date().toISOString().slice(0, 10));
   const [vatRate, setVatRate] = React.useState(0.07);
-  const [items, setItems] = React.useState([{ product_code: "", quantity: 1, unit_price: 0 }]);
+  const [items, setItems] = React.useState([{ product_code: "", quantity: 1, unit_price: 0, line_discount_percent: 0 }]);
   const [alertModal, setAlertModal] = React.useState({ isOpen: false, title: "Validation Error", message: "" });
   const [customerModalOpen, setCustomerModalOpen] = React.useState(false);
   const [customerDetails, setCustomerDetails] = React.useState(null); // name + address (readonly)
@@ -78,9 +78,10 @@ export default function InvoiceForm({ onSubmit, submitting, initialData }) {
         product_label: li.product_label || `${li.product_code || ""} - ${li.product_name || ""}`.replace(/^ - /, ""),
         units_code: li.units_code || "",
         quantity: li.quantity,
-        unit_price: Number(li.unit_price)
+        unit_price: Number(li.unit_price),
+        line_discount_percent: Number(li.line_discount_percent || 0),
       }));
-      setItems(mappedItems.length > 0 ? mappedItems : [{ product_code: "", quantity: 1, unit_price: 0 }]);
+      setItems(mappedItems.length > 0 ? mappedItems : [{ product_code: "", quantity: 1, unit_price: 0, line_discount_percent: 0 }]);
     }
   }, [initialData]);
 
@@ -148,6 +149,7 @@ export default function InvoiceForm({ onSubmit, submitting, initialData }) {
           product_code: String(x.product_code || "").trim(),
           quantity: Number(x.quantity),
           unit_price: x.unit_price === "" || x.unit_price === null ? undefined : Number(x.unit_price),
+          line_discount_percent: Number(x.line_discount_percent || 0),
         };
         if (x.line_item_id != null && Number(x.line_item_id) > 0) out.id = Number(x.line_item_id);
         return out;

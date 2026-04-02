@@ -25,13 +25,13 @@ export default function LineItemsEditor({ value, onChange }) {
     function addRow() {
         onChange([
             ...items,
-            { product_code: "", product_name: "", quantity: 1, unit_price: 0 },
+            { product_code: "", product_name: "", quantity: 1, unit_price: 0, line_discount_percent: 0 },
         ]);
     }
 
     // Insert a new empty row after index i (add row in between)
     function insertRowAfter(i) {
-        const newRow = { product_code: "", product_name: "", quantity: 1, unit_price: 0 };
+        const newRow = { product_code: "", product_name: "", quantity: 1, unit_price: 0, line_discount_percent: 0 };
         const next = [...items.slice(0, i + 1), newRow, ...items.slice(i + 1)];
         onChange(next);
     }
@@ -99,7 +99,7 @@ export default function LineItemsEditor({ value, onChange }) {
     function onPickProduct(i, productCode, productData) {
         setProductErrorRow(null);
         if (!productData) {
-            update(i, { product_code: "", product_name: "", product_label: "", units_code: "", unit_price: 0 });
+            update(i, { product_code: "", product_name: "", product_label: "", units_code: "", unit_price: 0, line_discount_percent: 0 });
             return;
         }
 
@@ -116,13 +116,14 @@ export default function LineItemsEditor({ value, onChange }) {
         } else {
             update(i, {
                 product_code: productData.code,
-                product_name: productData.name ?? "",
-                product_label: productData.label,
-                units_code: productData.units_code,
-                unit_price: Number(productData.unit_price || 0)
-            });
+                    product_name: productData.name ?? "",
+                    product_label: productData.label,
+                    units_code: productData.units_code,
+                    unit_price: Number(productData.unit_price || 0),
+                    line_discount_percent: Number(items[i]?.line_discount_percent || 0),
+                });
+            }
         }
-    }
 
     function handleProductCodeBlur(i) {
         const code = String(items[i]?.product_code ?? "").trim();
@@ -135,7 +136,8 @@ export default function LineItemsEditor({ value, onChange }) {
                     product_name: p.name ?? "",
                     product_label: `${p.code} - ${p.name}`,
                     units_code: p.units_code ?? "",
-                    unit_price: Number(p.unit_price ?? 0)
+                    unit_price: Number(p.unit_price ?? 0),
+                    line_discount_percent: Number(items[i]?.line_discount_percent || 0),
                 });
             })
             .catch(() => {
@@ -145,10 +147,23 @@ export default function LineItemsEditor({ value, onChange }) {
             });
     }
 
+    function round2(value) {
+        return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+    }
+
     function computeExtended(it) {
         const q = Number(it.quantity || 0);
         const up = Number(it.unit_price || 0);
-        return q * up;
+        return round2(q * up);
+    }
+
+    function computeDiscountAmount(it) {
+        const discountPercent = Number(it.line_discount_percent || 0);
+        return round2(discountPercent * computeExtended(it));
+    }
+
+    function computeNetPrice(it) {
+        return round2(computeExtended(it) - computeDiscountAmount(it));
     }
 
     const total = items.reduce((s, it) => s + computeExtended(it), 0);
@@ -194,6 +209,9 @@ export default function LineItemsEditor({ value, onChange }) {
                             <th style={{ width: '10%' }} className="text-right">Qty <span className="required-marker">*</span></th>
                             <th style={{ width: '12%' }} className="text-right">Unit Price <span className="required-marker">*</span></th>
                             <th style={{ width: '12%' }} className="text-right">Extended</th>
+                            <th style={{ width: '12%' }} className="text-right">Discount %</th>
+                            <th style={{ width: '12%' }} className="text-right">Discount Amount</th>
+                            <th style={{ width: '12%' }} className="text-right">Net Price</th>
                             <th style={{ width: '100px' }} className="text-center">Actions</th>
                         </tr>
                     </thead>
@@ -223,11 +241,13 @@ export default function LineItemsEditor({ value, onChange }) {
                                 onProductCodeBlur={handleProductCodeBlur}
                                 formatBaht={formatBaht}
                                 computeExtended={computeExtended}
+                                computeDiscountAmount={computeDiscountAmount}
+                                computeNetPrice={computeNetPrice}
                             />
                         ))}
                         {items.length === 0 && (
                             <tr>
-                                <td colSpan="8" style={{ 
+                                <td colSpan="11" style={{ 
                                     padding: 40, 
                                     textAlign: 'center',
                                     color: 'var(--text-muted)'
