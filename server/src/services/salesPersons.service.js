@@ -16,7 +16,7 @@ export async function listSalesPersons({
   const total = Number(countResult.rows[0].total);
 
   const { rows } = await pool.query(
-    `SELECT id, code, name, start_work_date
+    `SELECT code, name, start_work_date
      FROM sales_person
      WHERE code ILIKE $1 OR name ILIKE $1
      ORDER BY code ASC
@@ -33,3 +33,47 @@ export async function listSalesPersons({
   };
 }
 
+export async function getSalesPersonByCode(code) {
+  if (!code || String(code).trim() === "") return null;
+  const { rows } = await pool.query(
+    `SELECT code, name, start_work_date
+     FROM sales_person
+     WHERE code = $1`,
+    [String(code).trim()],
+  );
+  return rows[0] ?? null;
+}
+
+export async function createSalesPerson({
+  code,
+  name,
+  start_work_date,
+} = {}) {
+  const resolvedCode = String(code || "").trim();
+  if (!resolvedCode) throw new Error("Sales person code is required");
+
+  await pool.query(
+    `INSERT INTO sales_person (code, name, start_work_date)
+     VALUES ($1, $2, $3)`,
+    [resolvedCode, name, start_work_date || null],
+  );
+
+  return { code: resolvedCode };
+}
+
+export async function updateSalesPersonByCode(
+  code,
+  { name, start_work_date } = {},
+) {
+  const resolvedCode = String(code || "").trim();
+  if (!resolvedCode) return null;
+
+  const result = await pool.query(
+    `UPDATE sales_person
+     SET name = $1, start_work_date = $2
+     WHERE code = $3`,
+    [name, start_work_date || null, resolvedCode],
+  );
+
+  return result.rowCount > 0 ? { ok: true } : null;
+}
