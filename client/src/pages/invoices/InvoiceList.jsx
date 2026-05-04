@@ -36,6 +36,7 @@ export default function InvoiceList() {
         { key: "invoice_no", label: "Invoice No" },
         { key: "customer_name", label: "Customer" },
         { key: "invoice_date", label: "Date", render: v => formatDate(v) },
+        { key: "sales_person_name", label: "Sales Person", render: v => v || "-" },
         { key: "amount_due", label: "Amount Due", align: "right", render: v => <span className="font-bold">{formatBaht(v)}</span> }
     ];
 

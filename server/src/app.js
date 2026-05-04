@@ -10,6 +10,7 @@ import invoicesRoutes from "./routes/invoices.routes.js";
 import reportsRoutes from "./routes/reports.routes.js";
 import customersRoutes from "./routes/customers.routes.js";
 import productsRoutes from "./routes/products.routes.js";
+import salesPersonsRoutes from "./routes/salesPersons.routes.js";
 
 const app = express();
 
@@ -63,17 +64,29 @@ app.get("/health", (_, res) => res.json({ ok: true }));
 // Check if repo has newer commits (for frontend update banner). Uses GIT_SHA from env, or git rev-parse when running dev.
 const REPO = "llbumpbumpll/InvoiceDoc2";
 const REPO_URL = `https://github.com/${REPO}`;
-function getCurrentSha() {
-  const fromEnv = process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT_SHA;
-  if (fromEnv) return fromEnv.trim();
+function getRepoRoot() {
   let repoRoot = process.cwd();
   if (!fs.existsSync(path.join(repoRoot, ".git"))) {
     repoRoot = path.resolve(repoRoot, "..");
   }
+  return repoRoot;
+}
+function getCurrentSha() {
+  const fromEnv = process.env.GIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA || process.env.RENDER_GIT_COMMIT_SHA;
+  if (fromEnv) return fromEnv.trim();
   try {
-    return execSync("git rev-parse HEAD", { cwd: repoRoot, encoding: "utf8" }).trim();
+    return execSync("git rev-parse HEAD", { cwd: getRepoRoot(), encoding: "utf8" }).trim();
   } catch {
     return null;
+  }
+}
+function getCurrentBranch() {
+  const fromEnv = process.env.GIT_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || process.env.RENDER_GIT_BRANCH;
+  if (fromEnv) return fromEnv.trim();
+  try {
+    return execSync("git rev-parse --abbrev-ref HEAD", { cwd: getRepoRoot(), encoding: "utf8" }).trim();
+  } catch {
+    return "main";
   }
 }
 app.get("/api/updates-check", async (_, res) => {
@@ -82,8 +95,9 @@ app.get("/api/updates-check", async (_, res) => {
     res.setHeader("X-Update-Available", "false");
     return res.json({ updateAvailable: false });
   }
+  const branch = getCurrentBranch();
   try {
-    const r = await fetch(`https://api.github.com/repos/${REPO}/commits/main`, {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/commits/${branch}`, {
       headers: { Accept: "application/vnd.github.v3+json" },
     });
     if (!r.ok) {
@@ -106,6 +120,7 @@ app.get("/api/updates-check", async (_, res) => {
 app.use("/api/customers", customersRoutes);
 app.use("/api/products", productsRoutes);
 app.use("/api/invoices", invoicesRoutes);
+app.use("/api/sales-persons", salesPersonsRoutes);
 app.use("/api/reports", reportsRoutes);
 
 const port = process.env.PORT || 4000;

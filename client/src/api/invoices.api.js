@@ -17,6 +17,11 @@ export async function getInvoice(invoiceNo) {
   return res.data;
 }
 
+export async function getInvoiceDefaults() {
+  const res = unwrap(await http("/api/invoices/defaults"));
+  return res.data;
+}
+
 export async function createInvoice(payload) {
   const res = unwrap(await http("/api/invoices", { method: "POST", body: JSON.stringify(payload) }));
   return res.data;

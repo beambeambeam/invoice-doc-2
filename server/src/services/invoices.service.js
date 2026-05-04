@@ -1,6 +1,46 @@
 // Invoice CRUD: list (search, pagination, sort), get with line items, create/update/delete. Transactions for create/update.
 import { pool } from "../db/pool.js";
 
+function round2(value) {
+  return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+}
+
+async function getDefaultVatRate(client) {
+  const res = await client.query(
+    "SELECT vat_percent FROM configuration ORDER BY id ASC LIMIT 1",
+  );
+  return Number(res.rows[0]?.vat_percent ?? 0.07);
+}
+
+function calculateLineAmounts(lineItem) {
+  const quantity = Number(lineItem.quantity || 0);
+  const unit_price = Number(lineItem.unit_price || 0);
+  const line_discount_percent = Number(lineItem.line_discount_percent || 0);
+  const extended_price = round2(quantity * unit_price);
+  const line_discount_amount = round2(line_discount_percent * extended_price);
+  const line_net_price = round2(extended_price - line_discount_amount);
+
+  return {
+    ...lineItem,
+    quantity,
+    unit_price,
+    line_discount_percent,
+    extended_price,
+    line_discount_amount,
+    line_net_price,
+  };
+}
+
+function calculateInvoiceTotals(lineItems, vat_rate) {
+  const total_price = round2(lineItems.reduce((sum, item) => sum + Number(item.extended_price || 0), 0));
+  const total_discount = round2(lineItems.reduce((sum, item) => sum + Number(item.line_discount_amount || 0), 0));
+  const net_price = round2(total_price - total_discount);
+  const vat_amount = round2(net_price * Number(vat_rate || 0));
+  const amount_due = round2(net_price + vat_amount);
+
+  return { total_price, total_discount, net_price, vat_amount, amount_due };
+}
+
 export async function listInvoices({
   search = "",
   page = 1,
@@ -30,9 +70,11 @@ export async function listInvoices({
   const { rows } = await pool.query(
     `
       SELECT i.invoice_no, i.invoice_date, i.amount_due,
-             c.name as customer_name
+             c.name as customer_name,
+             sp.name as sales_person_name
       FROM invoice i
       JOIN customer c ON c.id = i.customer_id
+      LEFT JOIN sales_person sp ON sp.id = i.sales_person_id
       WHERE i.invoice_no ILIKE $1 OR c.name ILIKE $1
       ORDER BY ${sortColumn} ${sortDirection} NULLS LAST, i.id DESC
       LIMIT $2 OFFSET $3
@@ -55,6 +97,16 @@ async function resolveInvoiceId(invoice_no) {
   return r.rowCount > 0 ? r.rows[0].id : null;
 }
 
+export async function getInvoiceDefaults() {
+  const client = await pool.connect();
+  try {
+    const vat_rate = await getDefaultVatRate(client);
+    return { vat_rate };
+  } finally {
+    client.release();
+  }
+}
+
 export async function getInvoice(idOrInvoiceNo) {
   // Support both id (number) and invoice_no (string) for backward compatibility during migration
   let id = idOrInvoiceNo;
@@ -68,12 +120,16 @@ export async function getInvoice(idOrInvoiceNo) {
   const header = await pool.query(
     `
       select i.invoice_no, i.invoice_date, i.total_amount, i.vat, i.amount_due,
+             i.total_price, i.total_discount, i.net_price, i.vat_percent, i.vat_amount,
              c.code as customer_code, c.name as customer_name,
              c.address_line1, c.address_line2,
-             co.name as country_name
+             co.name as country_name,
+             sp.code as sales_person_code,
+             sp.name as sales_person_name
       from invoice i
       join customer c on c.id = i.customer_id
       left join country co on co.id = c.country_id
+      left join sales_person sp on sp.id = i.sales_person_id
       where i.id = $1
     `,
     [id],
@@ -86,7 +142,10 @@ export async function getInvoice(idOrInvoiceNo) {
       select li.id,
              p.code as product_code, p.name as product_name,
              u.code as units_code,
-             li.quantity, li.unit_price, li.extended_price
+             li.quantity, li.unit_price,
+             li.extended_price,
+             li.extended_price as line_extended_price,
+             li.line_discount_percent, li.line_discount_amount, li.line_net_price
       from invoice_line_item li
       join product p on p.id = li.product_id
       join units u on u.id = p.units_id
@@ -112,13 +171,12 @@ async function enrichLineItems(client, line_items) {
     if (pr.rowCount === 0) throw new Error(`Product not found: ${product_code}`);
     const product_id = pr.rows[0].id;
     const unit_price = li.unit_price ?? Number(pr.rows[0].unit_price ?? 0);
-    const extended_price = Number(li.quantity) * Number(unit_price);
-    enriched.push({ ...li, product_id, unit_price, extended_price });
+    enriched.push(calculateLineAmounts({ ...li, product_id, unit_price }));
   }
   return enriched;
 }
 
-export async function createInvoice({ invoice_no, customer_code, invoice_date, vat_rate, line_items }) {
+export async function createInvoice({ invoice_no, customer_code, sales_person_code, invoice_date, vat_rate, line_items }) {
   const client = await pool.connect();
   try {
     await client.query("begin");
@@ -128,6 +186,15 @@ export async function createInvoice({ invoice_no, customer_code, invoice_date, v
     if (cust.rowCount === 0) throw new Error(`Customer not found: ${code}`);
     const customer_id = cust.rows[0].id;
 
+    let sales_person_id = null;
+    if (sales_person_code) {
+      const sp = await client.query("SELECT id FROM sales_person WHERE code = $1", [sales_person_code]);
+      if (sp.rowCount === 0) throw new Error(`Sales person not found: ${sales_person_code}`);
+      sales_person_id = sp.rows[0].id;
+    }
+
+    const resolvedVatRate = vat_rate != null ? Number(vat_rate) : await getDefaultVatRate(client);
+
     let resolvedInvoiceNo = invoice_no;
     if (!resolvedInvoiceNo || String(resolvedInvoiceNo).trim() === "") {
       const maxRes = await client.query("SELECT MAX(id) as m FROM invoice");
@@ -136,29 +203,42 @@ export async function createInvoice({ invoice_no, customer_code, invoice_date, v
     }
 
     const enriched = await enrichLineItems(client, line_items);
-
-    const total = enriched.reduce((s, x) => s + x.extended_price, 0);
-    const vat = total * vat_rate;
-    const amount_due = total + vat;
+    const totals = calculateInvoiceTotals(enriched, resolvedVatRate);
 
     if (cust.rows[0].credit_limit != null) {
       const limit = Number(cust.rows[0].credit_limit);
-      if (amount_due > limit) {
-        throw new Error(`Amount due (${amount_due}) exceeds customer credit limit (${limit}).`);
+      if (totals.amount_due > limit) {
+        throw new Error(`Amount due (${totals.amount_due}) exceeds customer credit limit (${limit}).`);
       }
     }
 
     const inv = await client.query(
       `
-        insert into invoice (id, created_at, invoice_no, invoice_date, customer_id, total_amount, vat, amount_due)
+        insert into invoice (
+          id, created_at, invoice_no, invoice_date, customer_id, sales_person_id,
+          total_amount, vat, amount_due, total_price, total_discount, net_price, vat_percent, vat_amount
+        )
         values (
           (select coalesce(max(id),0)+1 from invoice),
           now(),
-          $1,$2,$3,$4,$5,$6
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
         )
         returning id, invoice_no
       `,
-      [resolvedInvoiceNo, invoice_date, customer_id, total, vat, amount_due],
+      [
+        resolvedInvoiceNo,
+        invoice_date,
+        customer_id,
+        sales_person_id,
+        totals.total_price,
+        totals.vat_amount,
+        totals.amount_due,
+        totals.total_price,
+        totals.total_discount,
+        totals.net_price,
+        resolvedVatRate,
+        totals.vat_amount,
+      ],
     );
 
     const invoice_id = inv.rows[0].id;
@@ -166,14 +246,26 @@ export async function createInvoice({ invoice_no, customer_code, invoice_date, v
     for (const li of enriched) {
       await client.query(
         `
-          insert into invoice_line_item (id, created_at, invoice_id, product_id, quantity, unit_price, extended_price)
+          insert into invoice_line_item (
+            id, created_at, invoice_id, product_id, quantity, unit_price, extended_price,
+            line_discount_percent, line_discount_amount, line_net_price
+          )
           values (
             (select coalesce(max(id),0)+1 from invoice_line_item),
             now(),
-            $1,$2,$3,$4,$5
+            $1,$2,$3,$4,$5,$6,$7,$8
           )
         `,
-        [invoice_id, li.product_id, li.quantity, li.unit_price, li.extended_price],
+        [
+          invoice_id,
+          li.product_id,
+          li.quantity,
+          li.unit_price,
+          li.extended_price,
+          li.line_discount_percent,
+          li.line_discount_amount,
+          li.line_net_price,
+        ],
       );
     }
 
@@ -201,7 +293,7 @@ export async function deleteInvoice(idOrInvoiceNo) {
 
 export async function updateInvoice(
   idOrInvoiceNo,
-  { invoice_no, customer_code, invoice_date, vat_rate, line_items },
+  { invoice_no, customer_code, sales_person_code, invoice_date, vat_rate, line_items },
 ) {
   let id = idOrInvoiceNo;
   if (typeof idOrInvoiceNo === "string" && String(idOrInvoiceNo).trim() !== "" && isNaN(Number(idOrInvoiceNo))) {
@@ -220,16 +312,22 @@ export async function updateInvoice(
   try {
     await client.query("begin");
 
-    const enriched = await enrichLineItems(client, line_items);
+    let sales_person_id = null;
+    if (sales_person_code) {
+      const sp = await client.query("SELECT id FROM sales_person WHERE code = $1", [sales_person_code]);
+      if (sp.rowCount === 0) throw new Error(`Sales person not found: ${sales_person_code}`);
+      sales_person_id = sp.rows[0].id;
+    }
 
-    const total = enriched.reduce((s, x) => s + x.extended_price, 0);
-    const vat = total * vat_rate;
-    const amount_due = total + vat;
+    const resolvedVatRate = vat_rate != null ? Number(vat_rate) : await getDefaultVatRate(client);
+
+    const enriched = await enrichLineItems(client, line_items);
+    const totals = calculateInvoiceTotals(enriched, resolvedVatRate);
 
     if (cust.rows[0].credit_limit != null) {
       const limit = Number(cust.rows[0].credit_limit);
-      if (amount_due > limit) {
-        throw new Error(`Amount due (${amount_due}) exceeds customer credit limit (${limit}).`);
+      if (totals.amount_due > limit) {
+        throw new Error(`Amount due (${totals.amount_due}) exceeds customer credit limit (${limit}).`);
       }
     }
 
@@ -242,11 +340,27 @@ export async function updateInvoice(
 
     await client.query(
       `
-        UPDATE invoice 
-        SET invoice_no=$1, invoice_date=$2, customer_id=$3, total_amount=$4, vat=$5, amount_due=$6
-        WHERE id=$7
+        UPDATE invoice
+        SET invoice_no=$1, invoice_date=$2, customer_id=$3, sales_person_id=$4,
+            total_amount=$5, vat=$6, amount_due=$7,
+            total_price=$8, total_discount=$9, net_price=$10, vat_percent=$11, vat_amount=$12
+        WHERE id=$13
       `,
-      [resolvedInvoiceNo, invoice_date, customer_id, total, vat, amount_due, id],
+      [
+        resolvedInvoiceNo,
+        invoice_date,
+        customer_id,
+        sales_person_id,
+        totals.total_price,
+        totals.vat_amount,
+        totals.amount_due,
+        totals.total_price,
+        totals.total_discount,
+        totals.net_price,
+        resolvedVatRate,
+        totals.vat_amount,
+        id,
+      ],
     );
 
     const keptLineIds = line_items.filter((li) => li.id != null && Number(li.id) > 0).map((li) => Number(li.id));
@@ -262,27 +376,49 @@ export async function updateInvoice(
 
     for (const li of enriched) {
       const lineId = li.id != null && Number(li.id) > 0 ? Number(li.id) : null;
-      const extended_price = Number(li.quantity || 0) * Number(li.unit_price || 0);
       if (lineId) {
         await client.query(
           `
             UPDATE invoice_line_item
-            SET product_id=$1, quantity=$2, unit_price=$3, extended_price=$4
-            WHERE id=$5 AND invoice_id=$6
+            SET product_id=$1, quantity=$2, unit_price=$3, extended_price=$4,
+                line_discount_percent=$5, line_discount_amount=$6, line_net_price=$7
+            WHERE id=$8 AND invoice_id=$9
           `,
-          [li.product_id, li.quantity, li.unit_price, extended_price, lineId, id],
+          [
+            li.product_id,
+            li.quantity,
+            li.unit_price,
+            li.extended_price,
+            li.line_discount_percent,
+            li.line_discount_amount,
+            li.line_net_price,
+            lineId,
+            id,
+          ],
         );
       } else {
         await client.query(
           `
-            INSERT INTO invoice_line_item (id, created_at, invoice_id, product_id, quantity, unit_price, extended_price)
+            INSERT INTO invoice_line_item (
+              id, created_at, invoice_id, product_id, quantity, unit_price, extended_price,
+              line_discount_percent, line_discount_amount, line_net_price
+            )
             VALUES (
               (select coalesce(max(id),0)+1 from invoice_line_item),
               now(),
-              $1,$2,$3,$4,$5
+              $1,$2,$3,$4,$5,$6,$7,$8
             )
           `,
-          [id, li.product_id, li.quantity, li.unit_price, extended_price],
+          [
+            id,
+            li.product_id,
+            li.quantity,
+            li.unit_price,
+            li.extended_price,
+            li.line_discount_percent,
+            li.line_discount_amount,
+            li.line_net_price,
+          ],
         );
       }
     }
@@ -297,4 +433,3 @@ export async function updateInvoice(
     client.release();
   }
 }
-

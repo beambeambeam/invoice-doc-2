@@ -53,6 +53,9 @@ export async function getSalesByProductSummary({
     product_name: "p.name",
     quantity_sold: "SUM(li.quantity)",
     value_sold: "SUM(li.extended_price)",
+    total_discount: "SUM(li.line_discount_amount)",
+    net_value: "SUM(li.line_net_price)",
+    amount_due: "SUM(li.line_net_price * (1 + COALESCE(i.vat_percent, 0)))",
   };
   const sortColumn = allowedSort[sortBy] || allowedSort.value_sold;
   const sortDirection = sortDir === "asc" ? "ASC" : "DESC";
@@ -73,7 +76,10 @@ export async function getSalesByProductSummary({
     `
       SELECT p.code as product_code, p.name as product_name,
              SUM(li.quantity) as quantity_sold,
-             SUM(li.extended_price) as value_sold
+             SUM(li.extended_price) as value_sold,
+             SUM(li.line_discount_amount) as total_discount,
+             SUM(li.line_net_price) as net_value,
+             SUM(li.line_net_price * (1 + COALESCE(i.vat_percent, 0))) as amount_due
       FROM invoice_line_item li
       JOIN product p ON p.id = li.product_id
       JOIN invoice i ON i.id = li.invoice_id
@@ -146,6 +152,9 @@ export async function getSalesByCustomerSummary({
     customer_name: "c.name",
     quantity_sold: "SUM(li.quantity)",
     value_sold: "SUM(li.extended_price)",
+    total_discount: "SUM(li.line_discount_amount)",
+    net_value: "SUM(li.line_net_price)",
+    amount_due: "SUM(li.line_net_price * (1 + COALESCE(i.vat_percent, 0)))",
   };
   const sortColumn = allowedSort[sortBy] || allowedSort.product_code;
   const sortDirection = sortDir === "asc" ? "ASC" : "DESC";
@@ -170,7 +179,10 @@ export async function getSalesByCustomerSummary({
       SELECT p.code as product_code, p.name as product_name,
              c.code as customer_code, c.name as customer_name,
              SUM(li.quantity) as quantity_sold,
-             SUM(li.extended_price) as value_sold
+             SUM(li.extended_price) as value_sold,
+             SUM(li.line_discount_amount) as total_discount,
+             SUM(li.line_net_price) as net_value,
+             SUM(li.line_net_price * (1 + COALESCE(i.vat_percent, 0))) as amount_due
       FROM invoice i
       JOIN customer c ON c.id = i.customer_id
       JOIN invoice_line_item li ON li.invoice_id = i.id
@@ -243,6 +255,9 @@ export async function getSalesByProductMonthlySummary({
     product_name: "p.name",
     quantity_sold: "SUM(li.quantity)",
     value_sold: "SUM(li.extended_price)",
+    total_discount: "SUM(li.line_discount_amount)",
+    net_value: "SUM(li.line_net_price)",
+    amount_due: "SUM(li.line_net_price * (1 + COALESCE(i.vat_percent, 0)))",
   };
   const sortColumn = allowedSort[sortBy] || allowedSort.year;
   const sortDirection = sortDir === "asc" ? "ASC" : "DESC";
@@ -281,7 +296,10 @@ export async function getSalesByProductMonthlySummary({
         p.code as product_code,
         p.name as product_name,
         SUM(li.quantity) as quantity_sold,
-        SUM(li.extended_price) as value_sold
+        SUM(li.extended_price) as value_sold,
+        SUM(li.line_discount_amount) as total_discount,
+        SUM(li.line_net_price) as net_value,
+        SUM(li.line_net_price * (1 + COALESCE(i.vat_percent, 0))) as amount_due
       FROM invoice_line_item li
       JOIN invoice i ON i.id = li.invoice_id
       JOIN product p ON p.id = li.product_id
@@ -301,4 +319,3 @@ export async function getSalesByProductMonthlySummary({
     totalPages: Math.ceil(total / Number(limit)),
   };
 }
-
