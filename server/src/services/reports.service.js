@@ -302,3 +302,170 @@ export async function getSalesByProductMonthlySummary({
   };
 }
 
+export async function getReceiptsReport({
+  customer_code,
+  date_from,
+  date_to,
+  page = 1,
+  limit = 10,
+  sortBy = "receipt_date",
+  sortDir = "desc",
+} = {}) {
+  const offset = (Number(page) - 1) * Number(limit);
+  const allowedSort = {
+    receipt_no: "r.receipt_no",
+    receipt_date: "r.receipt_date",
+    customer_code: "c.code",
+    customer_name: "c.name",
+    payment_method: "r.payment_method",
+    payment_notes: "r.payment_notes",
+    total_received: "r.total_received",
+  };
+  const sortColumn = allowedSort[sortBy] || allowedSort.receipt_date;
+  const sortDirection = sortDir === "asc" ? "ASC" : "DESC";
+
+  let whereClause = "WHERE 1=1";
+  const params = [];
+  let paramIndex = 1;
+
+  if (customer_code) {
+    whereClause += ` AND c.code = $${paramIndex++}`;
+    params.push(String(customer_code).trim());
+  }
+  if (date_from) {
+    whereClause += ` AND r.receipt_date >= $${paramIndex++}`;
+    params.push(date_from);
+  }
+  if (date_to) {
+    whereClause += ` AND r.receipt_date <= $${paramIndex++}`;
+    params.push(date_to);
+  }
+
+  const countResult = await pool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM receipt r
+      JOIN customer c ON c.id = r.customer_id
+      ${whereClause}
+    `,
+    params,
+  );
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        r.receipt_no,
+        r.receipt_date,
+        c.code AS customer_code,
+        c.name AS customer_name,
+        r.payment_method,
+        r.payment_notes,
+        r.total_received
+      FROM receipt r
+      JOIN customer c ON c.id = r.customer_id
+      ${whereClause}
+      ORDER BY ${sortColumn} ${sortDirection}, r.id DESC
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `,
+    [...params, Number(limit), offset],
+  );
+
+  const total = Number(countResult.rows[0].total);
+  return {
+    data: rows,
+    total,
+    page: Number(page),
+    limit: Number(limit),
+    totalPages: Math.ceil(total / Number(limit)),
+  };
+}
+
+export async function getInvoiceReceiptsReport({
+  customer_code,
+  invoice_date_from,
+  invoice_date_to,
+  page = 1,
+  limit = 10,
+  sortBy = "invoice_date",
+  sortDir = "desc",
+} = {}) {
+  const offset = (Number(page) - 1) * Number(limit);
+  const allowedSort = {
+    invoice_no: "i.invoice_no",
+    invoice_date: "i.invoice_date",
+    customer_code: "c.code",
+    customer_name: "c.name",
+    invoice_amount_due: "i.amount_due",
+    invoice_amount_received: "ir.amount_received",
+    invoice_amount_still_remaining: "ir.amount_remain",
+    receipt_no: "r.receipt_no",
+    receipt_date: "r.receipt_date",
+    receipt_amount: "rli.amount_received",
+  };
+  const sortColumn = allowedSort[sortBy] || allowedSort.invoice_date;
+  const sortDirection = sortDir === "asc" ? "ASC" : "DESC";
+
+  let whereClause = "WHERE 1=1";
+  const params = [];
+  let paramIndex = 1;
+
+  if (customer_code) {
+    whereClause += ` AND c.code = $${paramIndex++}`;
+    params.push(String(customer_code).trim());
+  }
+  if (invoice_date_from) {
+    whereClause += ` AND i.invoice_date >= $${paramIndex++}`;
+    params.push(invoice_date_from);
+  }
+  if (invoice_date_to) {
+    whereClause += ` AND i.invoice_date <= $${paramIndex++}`;
+    params.push(invoice_date_to);
+  }
+
+  const countResult = await pool.query(
+    `
+      SELECT COUNT(*) AS total
+      FROM invoice i
+      JOIN customer c ON c.id = i.customer_id
+      LEFT JOIN invoice_received ir ON ir.invoice_id = i.id
+      LEFT JOIN receipt_line_item rli ON rli.invoice_id = i.id
+      LEFT JOIN receipt r ON r.id = rli.receipt_id
+      ${whereClause}
+    `,
+    params,
+  );
+
+  const { rows } = await pool.query(
+    `
+      SELECT
+        i.invoice_no,
+        i.invoice_date,
+        c.code AS customer_code,
+        c.name AS customer_name,
+        i.amount_due AS invoice_amount_due,
+        COALESCE(ir.amount_received, 0::numeric) AS invoice_amount_received,
+        COALESCE(ir.amount_remain, i.amount_due) AS invoice_amount_still_remaining,
+        r.receipt_no,
+        r.receipt_date,
+        rli.amount_received AS receipt_amount
+      FROM invoice i
+      JOIN customer c ON c.id = i.customer_id
+      LEFT JOIN invoice_received ir ON ir.invoice_id = i.id
+      LEFT JOIN receipt_line_item rli ON rli.invoice_id = i.id
+      LEFT JOIN receipt r ON r.id = rli.receipt_id
+      ${whereClause}
+      ORDER BY ${sortColumn} ${sortDirection} NULLS LAST, i.id DESC, r.id DESC NULLS LAST
+      LIMIT $${paramIndex++} OFFSET $${paramIndex++}
+    `,
+    [...params, Number(limit), offset],
+  );
+
+  const total = Number(countResult.rows[0].total);
+  return {
+    data: rows,
+    total,
+    page: Number(page),
+    limit: Number(limit),
+    totalPages: Math.ceil(total / Number(limit)),
+  };
+}
