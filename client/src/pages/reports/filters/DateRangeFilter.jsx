@@ -1,9 +1,9 @@
 import React from "react";
 
-export default function DateRangeFilter({ dateFrom, dateTo, onChange }) {
+export default function DateRangeFilter({ dateFrom, dateTo, onChange, label = "Date Range" }) {
   return (
     <div className="filter-group">
-      <label className="filter-label">Date Range</label>
+      <label className="filter-label">{label}</label>
       <div className="filter-row">
         <input
           type="date"
