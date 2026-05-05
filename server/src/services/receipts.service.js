@@ -424,7 +424,8 @@ export async function listReceiptInvoices({
   const sortColumn = allowedSort[sortBy] || allowedSort.invoice_date;
   const sortDirection = sortDir === "asc" ? "ASC" : "DESC";
 
-  const params = [customer_id, exclude_receipt_id, searchParam, Number(limit), offset];
+  const baseParams = [customer_id, exclude_receipt_id, searchParam];
+  const dataParams = [...baseParams, Number(limit), offset];
   const countResult = await pool.query(
     `
       WITH invoice_status AS (
@@ -450,7 +451,7 @@ export async function listReceiptInvoices({
       WHERE invoice_no ILIKE $3
         AND (amount_due - amount_received) > 0
     `,
-    params,
+    baseParams,
   );
 
   const { rows } = await pool.query(
@@ -485,7 +486,7 @@ export async function listReceiptInvoices({
       ORDER BY ${sortColumn} ${sortDirection} NULLS LAST, invoice_id DESC
       LIMIT $4 OFFSET $5
     `,
-    params,
+    dataParams,
   );
 
   const total = Number(countResult.rows[0].total);
