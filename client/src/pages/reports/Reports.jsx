@@ -83,6 +83,37 @@ const REPORT_CONFIG = {
         { key: "value_sold", label: "Value", align: "right", sortable: true, style: { fontWeight: 600 }, render: (v) => formatBaht(v) }
       ];
     }
+  },
+  "receipt-list": {
+    title: "Receipt List",
+    subtitle: "Customer payment receipts",
+    emptyMessage: "No receipt records found.",
+    getColumns: () => [
+      { key: "receipt_no", label: "Receipt No", sortable: true },
+      { key: "receipt_date", label: "Date", sortable: true, render: (v) => formatDate(v) },
+      { key: "customer_code", label: "Customer Code", sortable: true },
+      { key: "customer_name", label: "Customer Name", sortable: true },
+      { key: "payment_method", label: "Payment Method", sortable: true },
+      { key: "payment_notes", label: "Payment Notes", sortable: true, render: (v) => v || "-" },
+      { key: "total_received", label: "Total Received", align: "right", sortable: true, render: (v) => formatBaht(v) },
+    ]
+  },
+  "invoice-receipts": {
+    title: "Invoice Receipts",
+    subtitle: "Invoices with receipt allocations",
+    emptyMessage: "No invoice receipt records found.",
+    getColumns: () => [
+      { key: "invoice_no", label: "Invoice No", sortable: true },
+      { key: "invoice_date", label: "Invoice Date", sortable: true, render: (v) => formatDate(v) },
+      { key: "customer_code", label: "Customer Code", sortable: true },
+      { key: "customer_name", label: "Customer Name", sortable: true },
+      { key: "invoice_amount_due", label: "Amount Due", align: "right", sortable: true, render: (v) => formatBaht(v) },
+      { key: "invoice_amount_received", label: "Amount Received", align: "right", sortable: true, render: (v) => formatBaht(v) },
+      { key: "invoice_amount_still_remaining", label: "Amount Remaining", align: "right", sortable: true, render: (v) => formatBaht(v) },
+      { key: "receipt_no", label: "Receipt No", sortable: true, render: (v) => v || "-" },
+      { key: "receipt_date", label: "Receipt Date", sortable: true, render: (v) => v ? formatDate(v) : "-" },
+      { key: "receipt_amount", label: "Receipt Amount", align: "right", sortable: true, render: (v) => v != null ? formatBaht(v) : "-" },
+    ]
   }
 };
 
@@ -111,8 +142,10 @@ export default function Reports({ type = "product-sales" }) {
     const params = {
       product_code: appliedFilters.productCode || undefined,
       customer_code: appliedFilters.customerCode || undefined,
-      date_from: appliedFilters.dateFrom || undefined,
-      date_to: appliedFilters.dateTo || undefined,
+      date_from: type === "invoice-receipts" ? undefined : (appliedFilters.dateFrom || undefined),
+      date_to: type === "invoice-receipts" ? undefined : (appliedFilters.dateTo || undefined),
+      invoice_date_from: type === "invoice-receipts" ? (appliedFilters.dateFrom || undefined) : undefined,
+      invoice_date_to: type === "invoice-receipts" ? (appliedFilters.dateTo || undefined) : undefined,
       year: appliedFilters.year || undefined,
       month: appliedFilters.month || undefined,
       page: currentPage,

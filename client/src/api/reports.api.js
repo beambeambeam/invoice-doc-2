@@ -11,6 +11,8 @@ const REPORT_ENDPOINTS = {
   "product-sales": "/api/reports/product-sales",
   "monthly-sales": "/api/reports/product-monthly-sales",
   "customer-sales": "/api/reports/customer-sales",
+  "receipt-list": "/api/reports/receipts",
+  "invoice-receipts": "/api/reports/invoice-receipts",
 };
 
 /**
@@ -27,6 +29,8 @@ export async function getReportData(type, params = {}) {
     "customer_code",
     "date_from",
     "date_to",
+    "invoice_date_from",
+    "invoice_date_to",
     "year",
     "month",
     "page",
